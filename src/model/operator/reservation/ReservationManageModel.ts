@@ -563,7 +563,7 @@ class ReservationManageModel implements IReservationManageModel {
             });
 
         // 新しい予約情報検索
-        const newRulePrograms =
+        let newRulePrograms =
             rule !== null && rule.reserveOption.enable === true && rule.isTimeSpecification === false
                 ? await this.programDB
                       .findRule({
@@ -577,6 +577,11 @@ class ReservationManageModel implements IReservationManageModel {
                           throw err;
                       })
                 : [];
+
+        // 予約済み番組を回避
+        const programIds = newRulePrograms.map(program => program.id);
+        const reservedPrograms = await this.reserveDB.findProgramId(programIds);
+        newRulePrograms = newRulePrograms.filter(program => { return !reservedPrograms.some(p => p.programId === program.id); });
 
         // 予約情報作成
         const newRuleReserves: Reserve[] = [];
