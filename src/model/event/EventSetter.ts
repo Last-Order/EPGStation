@@ -97,7 +97,7 @@ export default class EventSetter implements IEventSetter {
         // ルール追加イベント
         this.ruleEvent.setAdded(ruleId => {
             this.ipc.notifyClient();
-            this.reservationManage.updateRule(ruleId);
+            this.reservationManage.updateRule(ruleId, false, false, true);
         });
 
         // ルール更新イベント

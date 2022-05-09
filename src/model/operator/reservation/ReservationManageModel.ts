@@ -518,6 +518,7 @@ class ReservationManageModel implements IReservationManageModel {
         ruleId: apid.RuleId,
         isSuppressLog: boolean = false,
         isFirstUpdate: boolean = false,
+        isFirstTimeAdded: boolean = false,
     ): Promise<void> {
         // 実行権取得
         const exeId = await this.executeManagementModel.getExecution(
@@ -578,10 +579,12 @@ class ReservationManageModel implements IReservationManageModel {
                       })
                 : [];
 
-        // 予約済み番組を回避
-        const programIds = newRulePrograms.map(program => program.id);
-        const reservedPrograms = await this.reserveDB.findProgramId(programIds);
-        newRulePrograms = newRulePrograms.filter(program => { return !reservedPrograms.some(p => p.programId === program.id); });
+        if (isFirstTimeAdded) {
+            // 予約済み番組を回避
+            const programIds = newRulePrograms.map(program => program.id);
+            const reservedPrograms = await this.reserveDB.findProgramId(programIds);
+            newRulePrograms = newRulePrograms.filter(program => { return !reservedPrograms.some(p => p.programId === program.id); });
+        }
 
         // 予約情報作成
         const newRuleReserves: Reserve[] = [];
