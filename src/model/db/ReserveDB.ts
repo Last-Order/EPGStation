@@ -254,13 +254,13 @@ export default class ReserveDB implements IReserveDB {
      * @param programId program id
      * @return Promise<Reserve[]>
      */
-    public async findProgramId(programId: apid.ProgramId | apid.ProgramId[]): Promise<Reserve[]> {
+    public async findProgramId(programId: apid.ProgramId): Promise<Reserve[]> {
         const connection = await this.op.getConnection();
         const queryBuilder = connection.getRepository(Reserve);
 
         return await this.promieRetry.run(() => {
             return queryBuilder.find({
-                where: { programId: Array.isArray(programId) ? In(programId) : programId },
+                where: { programId: programId },
             });
         });
     }
