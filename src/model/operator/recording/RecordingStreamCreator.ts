@@ -242,7 +242,11 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
             return this.getTimeSpecifiedStream(reserve, mirakurun);
         } else {
             // programId 指定予約
-            return mirakurun.getProgramStream(reserve.programId, true);
+            return mirakurun.getProgramStream({
+                id: reserve.programId,
+                decode: true,
+                signal: AbortSignal.timeout(5000),
+            });
         }
     }
 
