@@ -245,7 +245,7 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
             return mirakurun.getProgramStream({
                 id: reserve.programId,
                 decode: true,
-                signal: AbortSignal.timeout(5000),
+                // signal: AbortSignal.timeout(5000),
             });
         }
     }
