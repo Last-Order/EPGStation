@@ -42,6 +42,7 @@ class ExecutionManagementModel implements IExecutionManagementModel {
             // タイムアウト設定
             const timerId = setTimeout(() => {
                 this.log.system.error(`get execution error: ${priority}`);
+                this.log.system.error(`queue: `, this.exeQueue);
                 // listener から削除
                 this.exeEventEmitter.removeListener(ExecutionManagementModel.UNLOCK_EVENT, onDone);
 

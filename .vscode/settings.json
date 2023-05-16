@@ -5,6 +5,6 @@
     "editor.formatOnSave": true,
     "yaml.schemas": {
         "http://json.schemastore.org/swagger-2.0": ["api.yml"]
-    }
+    },
+    "typescript.tsdk": "node_modules\\typescript\\lib"
 }
-

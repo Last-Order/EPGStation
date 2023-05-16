@@ -518,7 +518,6 @@ class ReservationManageModel implements IReservationManageModel {
         ruleId: apid.RuleId,
         isSuppressLog: boolean = false,
         isFirstUpdate: boolean = false,
-        isFirstTimeAdded: boolean = false,
     ): Promise<void> {
         // 実行権取得
         const exeId = await this.executeManagementModel.getExecution(
