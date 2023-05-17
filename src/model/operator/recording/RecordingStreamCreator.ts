@@ -105,10 +105,10 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
      * @param reserve: Reserve
      * @return Promise<http.IncomingMessage>
      */
-    public async create(reserve: Reserve): Promise<http.IncomingMessage> {
+    public async create(reserve: Reserve, signal?: AbortSignal): Promise<http.IncomingMessage> {
         if (reserve.isConflict === true) {
             // tuner の割当がないのでそのままストリームを取得
-            return this.getStream(reserve);
+            return this.getStream(reserve, signal);
         }
 
         const tunerId = await this.getTunerId(reserve);
@@ -116,11 +116,11 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
             // 割り当てられる tuner がなかった
             this.log.system.warn(`TunerAssignmentError programId: ${reserve.id}`);
 
-            return this.getStream(reserve);
+            return this.getStream(reserve, signal);
         }
 
         // stream 取得
-        const stream = this.getStream(reserve);
+        const stream = this.getStream(reserve, signal);
 
         // create tuner program
         const tunerProgram: TunerProgram = {
@@ -233,7 +233,7 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
      * @param reserve: ReserveProgram
      * @return Promise<http.IncomingMessage>
      */
-    private getStream(reserve: Reserve): Promise<http.IncomingMessage> {
+    private getStream(reserve: Reserve, signal?: AbortSignal): Promise<http.IncomingMessage> {
         const mirakurun = this.mirakurunClientModel.getClient();
         mirakurun.priority = reserve.isConflict ? this.config.conflictPriority : this.config.recPriority;
 
@@ -245,7 +245,7 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
             return mirakurun.getProgramStream({
                 id: reserve.programId,
                 decode: true,
-                // signal: AbortSignal.timeout(5000),
+                signal,
             });
         }
     }

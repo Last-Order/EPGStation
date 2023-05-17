@@ -162,7 +162,16 @@ class RecorderModel implements IRecorderModel {
 
         // 番組ストリームを取得する
         try {
-            this.stream = await this.streamCreator.create(this.reserve);
+            const abortController = new AbortController();
+            const timeoutTimer = setTimeout(() => {
+                if (!this.stream) {
+                    abortController.abort('create stream timeout.');
+                }
+            }, 5000);
+
+            this.stream = await this.streamCreator.create(this.reserve, abortController.signal);
+
+            clearTimeout(timeoutTimer);
 
             // 録画準備のキャンセル or ストリーム取得中に予約が削除されていないかチェック
             if ((await this.reserveDB.findId(this.reserve.id)) === null) {
