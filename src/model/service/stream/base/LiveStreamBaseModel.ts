@@ -185,6 +185,7 @@ export default abstract class LiveStreamBaseModel
             .catch(err => {
                 this.stream = null;
                 if (this.processOption !== null) {
+                    this.log.system.error(err);
                     this.log.system.error(`get mirakurun service stream failed: ${this.processOption.channelId}`);
                 }
                 throw err;
