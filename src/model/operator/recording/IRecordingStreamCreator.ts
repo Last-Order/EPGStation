@@ -9,7 +9,7 @@ interface IRecordingStreamCreator {
 }
 
 namespace IRecordingStreamCreator {
-    export const PREP_TIME = 25 * 1000;
+    export const PREP_TIME = 15 * 1000;
 }
 
 export default IRecordingStreamCreator;

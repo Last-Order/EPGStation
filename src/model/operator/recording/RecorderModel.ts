@@ -167,7 +167,7 @@ class RecorderModel implements IRecorderModel {
                 if (!this.stream) {
                     abortController.abort('create stream timeout.');
                 }
-            }, 8000);
+            }, 20000);
 
             this.stream = await this.streamCreator.create(this.reserve, abortController.signal);
 
