@@ -3,9 +3,9 @@
     "version": "2.7.3",
     "private": true,
     "scripts": {
-        "build": "NODE_OPTIONS='--openssl-legacy-provider' vue-cli-service build",
-        "lint": "NODE_OPTIONS='--openssl-legacy-provider' vue-cli-service lint",
-        "watch": "NODE_OPTIONS='--openssl-legacy-provider' vue-cli-service build --watch --mode development"
+        "build": "cross-env NODE_OPTIONS='--openssl-legacy-provider' vue-cli-service build",
+        "lint": "cross-env NODE_OPTIONS='--openssl-legacy-provider' vue-cli-service lint",
+        "watch": "cross-env NODE_OPTIONS='--openssl-legacy-provider' vue-cli-service build --watch --mode development"
     },
     "dependencies": {
         "@mdi/font": "7.3.67",
@@ -45,6 +45,7 @@
         "@vue/cli-service": "4.5.13",
         "@vue/eslint-config-prettier": "6.0.0",
         "@vue/eslint-config-typescript": "7.0.0",
+        "cross-env": "7.0.3",
         "eslint": "7.32.0",
         "eslint-plugin-prettier": "3.4.1",
         "eslint-plugin-vue": "7.20.0",
