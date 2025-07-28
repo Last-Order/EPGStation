@@ -4,6 +4,7 @@ import * as http from 'http';
 import { inject, injectable } from 'inversify';
 import * as path from 'path';
 import * as stream from 'stream';
+import * as mapid from '../../../../node_modules/mirakurun/api';
 import * as apid from '../../../../api';
 import DropLogFile from '../../../db/entities/DropLogFile';
 import Recorded from '../../../db/entities/Recorded';
@@ -23,6 +24,7 @@ import IConfigFile from '../../IConfigFile';
 import IConfiguration from '../../IConfiguration';
 import ILogger from '../../ILogger';
 import ILoggerModel from '../../ILoggerModel';
+import IMirakurunClientModel from '../../IMirakurunClientModel';
 import IDropCheckerModel from './IDropCheckerModel';
 import IRecorderModel from './IRecorderModel';
 import IRecordingStreamCreator from './IRecordingStreamCreator';
@@ -45,6 +47,7 @@ class RecorderModel implements IRecorderModel {
     private dropChecker: IDropCheckerModel;
     private recordingUtil: IRecordingUtilModel;
     private recordingEvent: IRecordingEvent;
+    private mirakurunClientModel: IMirakurunClientModel;
 
     private reserve!: Reserve;
     private recordedId: apid.RecordedId | null = null;
@@ -63,6 +66,11 @@ class RecorderModel implements IRecorderModel {
 
     private dropLogFileId: apid.DropLogFileId | null = null;
 
+    private abortController: AbortController | null = null;
+
+    // イベントリレータイマー
+    private eventRelayTimerId: NodeJS.Timeout | null = null;
+
     constructor(
         @inject('ILoggerModel') logger: ILoggerModel,
         @inject('IConfiguration') configuration: IConfiguration,
@@ -77,6 +85,7 @@ class RecorderModel implements IRecorderModel {
         @inject('IDropCheckerModel') dropChecker: IDropCheckerModel,
         @inject('IRecordingUtilModel') recordingUtil: IRecordingUtilModel,
         @inject('IRecordingEvent') recordingEvent: IRecordingEvent,
+        @inject('IMirakurunClientModel') mirakurunClientModel: IMirakurunClientModel,
     ) {
         this.log = logger.getLogger();
         this.config = configuration.getConfig();
@@ -90,6 +99,7 @@ class RecorderModel implements IRecorderModel {
         this.dropChecker = dropChecker;
         this.recordingUtil = recordingUtil;
         this.recordingEvent = recordingEvent;
+        this.mirakurunClientModel = mirakurunClientModel;
     }
 
     /**
@@ -141,10 +151,8 @@ class RecorderModel implements IRecorderModel {
      */
     private async prepRecord(retry: number = 0): Promise<void> {
         if (this.isStopPrepRec === true) {
-            this.isStopPrepRec = false;
-            this.isPrepRecording = false;
-            this.isRecording = false;
             this.isPlanToDelete = false;
+            this.emitCancelEvent();
 
             return;
         }
@@ -162,6 +170,19 @@ class RecorderModel implements IRecorderModel {
 
         // 番組ストリームを取得する
         try {
+            // 番組開始時刻が変更されたことに伴い番組間に重なりが生じ、当該番組が削除されている
+            // NOTE: mirakurunの不具合に対処
+            if (this.reserve.programId) {
+                const program = await this.programDB.findId(this.reserve.programId);
+                if (program === null) {
+                    this.log.system.warn(
+                        `the program data does not found in database. retry later, (reerveId: ${this.reserve.id}, programId: ${this.reserve.programId})`,
+                    );
+                    this.emitCancelEvent();
+                    return;
+                }
+            }
+
             const abortController = new AbortController();
             const timeoutTimer = setTimeout(() => {
                 if (!this.stream) {
@@ -182,13 +203,15 @@ class RecorderModel implements IRecorderModel {
                 await this.doRecord();
             }
         } catch (err: any) {
+            if ((this.isStopPrepRec as any) === true) {
+                this.destroyStream();
+                this.emitCancelEvent();
+                return;
+            }
+
             this.log.system.error(`preprec failed: ${this.reserve.id}`);
             this.log.system.error(err);
-            if ((this.isStopPrepRec as any) === true) {
-                this.emitCancelEvent();
-
-                return;
-            } else if (retry < 3) {
+            if (retry < 3) {
                 // retry
                 setTimeout(() => {
                     this.prepRecord(retry + 1);
@@ -198,6 +221,8 @@ class RecorderModel implements IRecorderModel {
                 // 録画準備失敗を通知
                 this.recordingEvent.emitPrepRecordingFailed(this.reserve);
             }
+        } finally {
+            this.abortController = null;
         }
     }
 
@@ -208,9 +233,6 @@ class RecorderModel implements IRecorderModel {
         this.isStopPrepRec = false;
         this.isPrepRecording = false;
         this.isRecording = false;
-
-        // 録画準備失敗を通知
-        this.recordingEvent.emitCancelPrepRecording(this.reserve);
 
         this.eventEmitter.emit(RecorderModel.CANCEL_EVENT);
     }
@@ -441,6 +463,12 @@ class RecorderModel implements IRecorderModel {
 
                 // 録画開始を通知
                 this.recordingEvent.emitStartRecording(this.reserve, recorded);
+
+                // program id が指定されていればイベントリレーの確認を行う
+                if (this.reserve.programId !== null) {
+                    // イベントリレーを確認するために番組終了時間間近にタイマーをセットする
+                    this.setEventRelayTimer(this.reserve);
+                }
 
                 resolve();
             };
@@ -676,6 +704,11 @@ class RecorderModel implements IRecorderModel {
             `[FILE_HANDLE] recEnd destroyStream completed: reserveId: ${this.reserve.id} recordedId: ${this.recordedId}`,
         );
 
+        // イベントリレーのチェック用タイマーをクリア
+        if (this.eventRelayTimerId !== null) {
+            clearTimeout(this.eventRelayTimerId);
+        }
+
         // 削除予定か?
         if (this.isPlanToDelete === true) {
             this.log.system.info(`plan to delete reserveId: ${this.reserve.id} recordedId: ${this.recordedId}`);
@@ -731,6 +764,7 @@ class RecorderModel implements IRecorderModel {
             if (
                 this.reserve.isTimeSpecified === false &&
                 this.reserve.ruleId !== null &&
+                this.reserve.isEventRelay === false &&
                 this.isNeedDeleteReservation === true
             ) {
                 // ルール(Program Id 予約)の場合のみ記録する
@@ -820,13 +854,8 @@ class RecorderModel implements IRecorderModel {
 
     /**
      * 予約のキャンセル
-     * @param isPlanToDelete: boolean ファイルが削除される予定か
      */
-    public async cancel(isPlanToDelete: boolean): Promise<void> {
-        this.log.system.info(
-            `recording cancel reserveId: ${this.reserve.id}, recordedId: ${this.recordedId}, isPlanToDelete: ${isPlanToDelete}`,
-        );
-
+    private async _cancel(): Promise<void> {
         if (this.isPrepRecording === false && this.isRecording === false) {
             // 録画処理が開始されていない
             if (this.timerId !== null) {
@@ -843,16 +872,18 @@ class RecorderModel implements IRecorderModel {
                 }, 60 * 1000);
 
                 // 録画準備中
+                this.isStopPrepRec = true;
+                if (this.abortController !== null) {
+                    this.abortController.abort();
+                }
                 this.eventEmitter.once(RecorderModel.CANCEL_EVENT, () => {
                     clearTimeout(timerId);
                     // prep rec キャンセル完了
                     resolve();
                 });
-                this.isStopPrepRec = true;
             });
         } else if (this.isRecording === true) {
-            this.isPlanToDelete = isPlanToDelete;
-            this.log.system.info(`[FILE_HANDLE] stop recording: ${this.reserve.id}, isPlanToDelete: ${isPlanToDelete}`);
+            this.log.system.info(`stop recording: ${this.reserve.id}`);
             // 録画中
             if (this.stream !== null) {
                 this.log.system.info(`[FILE_HANDLE] cancel: destroying stream for reserveId: ${this.reserve.id}`);
@@ -860,7 +891,29 @@ class RecorderModel implements IRecorderModel {
                 this.stream.push(null); // eof 通知
                 this.log.system.info(`[FILE_HANDLE] cancel: stream destroyed for reserveId: ${this.reserve.id}`);
             }
+        }
+    }
+
+    /**
+     * 予約のキャンセル
+     * @param isPlanToDelete: boolean ファイルが削除される予定か
+     */
+    public async cancel(isPlanToDelete: boolean): Promise<void> {
+        this.log.system.info(
+            `recording cancel reserveId: ${this.reserve.id}, recordedId: ${this.recordedId}, isPlanToDelete: ${isPlanToDelete}`,
+        );
+
+        this.isPlanToDelete = isPlanToDelete;
+
+        if (this.isPrepRecording === true) {
+            await this._cancel();
+            // 録画準備失敗を通知
+            this.recordingEvent.emitCancelPrepRecording(this.reserve);
+        } else if (this.isRecording === true) {
+            await this._cancel();
             this.isNeedDeleteReservation = false;
+        } else {
+            await this._cancel();
         }
     }
 
@@ -919,16 +972,39 @@ class RecorderModel implements IRecorderModel {
                             this.log.system.error(err);
                         }
                     }
-                } else if (this.reserve.startAt < newReserve.startAt) {
-                    // 開始時間が遅くなった
-                    this.log.system.info(
-                        `resetting recording timer reserveId: ${this.reserve.id}, recordedId: ${this.recordedId}`,
-                    );
-                    await this.cancel(false).catch(err => {
-                        this.log.system.error(`cancel recording error: ${newReserve.id}`);
-                        this.log.system.error(err);
-                    });
-                    this.setTimer(newReserve, isSuppressLog); // タイマー再セット
+                } else {
+                    // 録画中に終了時間が変更されたらイベントリレーの確認タイマーも再設定する
+                    if (this.reserve.endAt !== newReserve.endAt && this.isRecording === true) {
+                        this.setEventRelayTimer(newReserve);
+                    }
+
+                    if (this.reserve.startAt < newReserve.startAt) {
+                        // 開始時刻が遅くなった
+                        if (this.isRecording === false) {
+                            // まだ録画準備中なのでキャンセルしてタイマーを再セット
+                            this.log.system.info(
+                                `cancel prepare recording.`,
+                                `(reserveId: ${this.reserve.id}, programId: ${this.reserve.programId}, recordedId: ${this.recordedId})`,
+                            );
+                            await this._cancel().catch(err => {
+                                this.log.system.error(
+                                    `cancel recording error: (reserveId: ${newReserve.id}, programId: ${this.reserve.programId})`,
+                                );
+                                this.log.system.error(err);
+                            });
+                            // NOTE: キャンセルエラーが発生したとしてもタイマーを再セット
+                            this.setTimer(newReserve, isSuppressLog);
+                        } else {
+                            // 録画中
+                            // NOTE:
+                            //  EPGstationがスケジュール変更を遅れて把握した可能性がある
+                            //  一度ストリームを開始した番組の開始時刻が変更されることはないのでここでは何もしない
+                            this.log.system.info(
+                                `Ignores schedule changes because this program is already recording.`,
+                                ` (reserveId: ${this.reserve.id}, programId: ${this.reserve.programId}, recordedId: ${this.recordedId})`,
+                            );
+                        }
+                    }
                 }
             }
         }
@@ -944,12 +1020,118 @@ class RecorderModel implements IRecorderModel {
     }
 
     /**
+     * イベントリレーをチェックするためのタイマーをセットする
+     * @param reserve: Reserve 予約情報
+     */
+    private setEventRelayTimer(reserve: Reserve): void {
+        // 除外, 重複しているものはタイマーをセットしない
+        if (reserve.isSkip === true || reserve.isOverlap === true) {
+            return;
+        }
+
+        // 待機時間を計算
+        const now = new Date().getTime();
+        let time = reserve.endAt - RecorderModel.EVENT_RELAY_CHECK_TIME - now;
+        if (time < 0) {
+            time = 0;
+        }
+
+        // タイマーをセットする
+        if (this.eventRelayTimerId !== null) {
+            clearTimeout(this.eventRelayTimerId);
+        }
+        this.eventRelayTimerId = setTimeout(async () => {
+            await this.checkEventRelay();
+        }, time);
+    }
+
+    /**
+     * イベントリレーの対象となる予約情報の確認を行う
+     */
+    private async checkEventRelay(): Promise<void> {
+        // ProgramId の指定がない場合は何もしない
+        if (this.reserve.programId === null) {
+            return;
+        }
+
+        this.log.system.debug(
+            `check event relay program. reserveId: ${this.reserve.id}, programId: ${this.reserve.programId}`,
+        );
+        const mirakurun = this.mirakurunClientModel.getClient();
+
+        // program 情報の取得
+        let parentProgram: mapid.Program;
+        try {
+            parentProgram = await mirakurun.getProgram(this.reserve.programId);
+            this.log.system.debug(parentProgram);
+        } catch (err: any) {
+            this.log.system.error(
+                `failed to get event relay info. reserveId: ${this.reserve.id}, programId: ${this.reserve.programId}`,
+            );
+            return;
+        }
+
+        // event relay の設定の有無を調べる
+        if (typeof parentProgram.relatedItems === 'undefined') {
+            this.log.system.debug(
+                `event relay porgram does not exist. reserveId: ${this.reserve.id}, programId: ${this.reserve.programId}`,
+            );
+            return;
+        }
+
+        // event relay 対象の ProgramId のリストを作成する
+        const reserveProgramIds: { programId: apid.ProgramId; parentReserve: Reserve }[] = [];
+        for (const relatedItem of parentProgram.relatedItems) {
+            // type が ralay 出ないなら skip
+            if (relatedItem.type !== 'relay') {
+                continue;
+            }
+
+            // 番組を予約するための networkId を生成する
+            let networkId = relatedItem.networkId;
+            if (typeof networkId === 'undefined' || networkId === null) {
+                // 本来 networkId は null を取らないはずだが、mirakc は null を返す
+                // networkId が存在しない場合は自ネットワークのイベントリレーと判断する
+                networkId = parentProgram.networkId;
+            }
+
+            // networkId, serviceId, eventId から該当する番組情報を検索する
+            const reserveProgram = await this.programDB.findEventRelayProgram(
+                networkId,
+                relatedItem.serviceId,
+                relatedItem.eventId,
+            );
+            if (reserveProgram === null) {
+                this.log.system.warn(
+                    `event relay program is not found. networkId: ${networkId}, serviceId: ${relatedItem.serviceId}, eventId: ${relatedItem.eventId}`,
+                );
+                continue;
+            }
+
+            // 予約に必要な情報を詰める
+            // parentReserve は deep copy して渡す
+            reserveProgramIds.push({ programId: reserveProgram.id, parentReserve: Object.assign({}, this.reserve) });
+            this.log.system.info(
+                `set event relay program. programId ${this.reserve.programId} -> ${reserveProgram.id}`,
+            );
+        }
+
+        // イベントリレーの ProgramId が存在するなら予約を依頼する
+        if (reserveProgramIds.length > 0) {
+            this.recordingEvent.emitEventRelay(reserveProgramIds);
+        }
+    }
+
+    /**
      * タイマーを再設定する
      * @return boolean セットに成功したら true を返す
      */
     public resetTimer(): boolean {
-        // 録画中なら無視
+        // 録画中ならイベントリレーのチェック用のタイマーを再設定
         if (this.isRecording === true) {
+            if (this.eventRelayTimerId !== null) {
+                this.setEventRelayTimer(this.reserve);
+            }
             return true;
         }
 
@@ -960,6 +1142,7 @@ class RecorderModel implements IRecorderModel {
 namespace RecorderModel {
     export const CANCEL_EVENT = 'RecordingCancelEvent';
     export const START_RECORDING_EVENT = 'StartRecordingEvent';
+    export const EVENT_RELAY_CHECK_TIME = 20 * 1000; // イベントリレーの確認時間 20秒
 }
 
 export default RecorderModel;
