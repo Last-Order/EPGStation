@@ -220,31 +220,60 @@ class RecorderModel implements IRecorderModel {
      * @param needesUnpip: boolean
      */
     private destroyStream(needesUnpip: boolean = true): void {
+        this.log.system.info(
+            `[FILE_HANDLE] destroyStream called for reserveId: ${this.reserve.id}, recordedId: ${this.recordedId}, needesUnpip: ${needesUnpip}`,
+        );
+
         // stop stream
         if (this.stream !== null) {
             try {
+                this.log.system.info(`[FILE_HANDLE] Destroying stream for reserveId: ${this.reserve.id}`);
                 if (needesUnpip === true) {
                     this.stream.unpipe();
+                    this.log.system.info(`[FILE_HANDLE] Stream unpipe completed for reserveId: ${this.reserve.id}`);
                 }
                 this.stream.destroy();
                 this.stream.push(null); // eof 通知
                 this.stream.removeAllListeners('data');
                 this.stream = null;
+                this.log.system.info(`[FILE_HANDLE] Stream destroyed and nullified for reserveId: ${this.reserve.id}`);
             } catch (err: any) {
                 this.log.system.error(`destroy stream error: ${this.reserve.id}`);
                 this.log.system.error(err);
             }
+        } else {
+            this.log.system.info(`[FILE_HANDLE] Stream is already null for reserveId: ${this.reserve.id}`);
         }
 
         // stop save file
         if (this.recFile !== null) {
             try {
+                this.log.system.info(
+                    `[FILE_HANDLE] Ending recFile for reserveId: ${this.reserve.id}, fd: ${
+                        (this.recFile as any)?.fd || 'unknown'
+                    }, destroyed: ${this.recFile.destroyed}`,
+                );
                 this.recFile.removeAllListeners('error');
                 this.recFile.end();
+                this.log.system.info(`[FILE_HANDLE] recFile.end() called for reserveId: ${this.reserve.id}`);
+
+                // 设置超时检查文件是否正确关闭
+                setTimeout(() => {
+                    if (this.recFile !== null) {
+                        this.log.system.warn(
+                            `[FILE_HANDLE] WARNING: recFile still not null after 5 seconds for reserveId: ${this.reserve.id}, destroyed: ${this.recFile.destroyed}`,
+                        );
+                        this.log.system.info(
+                            `[FILE_HANDLE] Force set recFile to null for reserveId: ${this.reserve.id}`,
+                        );
+                    }
+                }, 5000);
             } catch (err: any) {
                 this.log.system.error(`end recFile error: ${this.reserve.id}`);
                 this.log.system.error(err);
             }
+        } else {
+            this.log.system.info(`[FILE_HANDLE] recFile is already null for reserveId: ${this.reserve.id}`);
         }
 
         // stop drop check
@@ -287,9 +316,19 @@ class RecorderModel implements IRecorderModel {
 
         // save stream
         this.recFile = fs.createWriteStream(recPath.fullPath, { flags: 'a' });
+        this.log.system.info(
+            `[FILE_HANDLE] Created WriteStream for reserveId: ${this.reserve.id}, path: ${recPath.fullPath}, fd: ${
+                (this.recFile as any).fd || 'unknown'
+            }`,
+        );
+
         this.recFile.once('error', async err => {
             // 書き込みエラー発生
-            this.log.system.error(`recFile error reserveId: ${this.reserve.id}, recordedId: ${this.recordedId}`);
+            this.log.system.error(
+                `[FILE_HANDLE] recFile error reserveId: ${this.reserve.id}, recordedId: ${this.recordedId}, fd: ${
+                    (this.recFile as any)?.fd || 'unknown'
+                }`,
+            );
             this.log.system.error(err);
             if (this.stream === null) {
                 this.cancel(false);
@@ -303,6 +342,21 @@ class RecorderModel implements IRecorderModel {
                 });
             }
         });
+
+        // 文件关闭事件监听
+        this.recFile.once('close', () => {
+            this.log.system.info(
+                `[FILE_HANDLE] recFile closed for reserveId: ${this.reserve.id}, recordedId: ${this.recordedId}`,
+            );
+        });
+
+        // 文件完成事件监听
+        this.recFile.once('finish', () => {
+            this.log.system.info(
+                `[FILE_HANDLE] recFile finished for reserveId: ${this.reserve.id}, recordedId: ${this.recordedId}`,
+            );
+        });
+
         this.stream.pipe(this.recFile);
 
         // drop checker
@@ -449,19 +503,33 @@ class RecorderModel implements IRecorderModel {
      * @returns Promise<Recorded>
      */
     private async setEndProcess(s: http.IncomingMessage): Promise<void> {
-        this.log.system.info(`set stream.finished: reserveId: ${this.reserve.id} recordedId: ${this.recordedId}`);
+        this.log.system.info(
+            `[FILE_HANDLE] set stream.finished: reserveId: ${this.reserve.id} recordedId: ${this.recordedId}`,
+        );
         stream.finished(s, {}, async err => {
+            this.log.system.info(
+                `[FILE_HANDLE] stream.finished callback triggered: reserveId: ${this.reserve.id} recordedId: ${
+                    this.recordedId
+                }, error: ${err ? err.message : 'none'}, isCanceledCallingFinished: ${this.isCanceledCallingFinished}`,
+            );
+
             // 終了処理が呼ばれていたら無視する
             if (this.isCanceledCallingFinished === true) {
+                this.log.system.info(
+                    `[FILE_HANDLE] stream.finished ignored due to isCanceledCallingFinished: reserveId: ${this.reserve.id}`,
+                );
                 return;
             }
 
             if (err) {
                 this.log.system.error(
-                    `stream.finished error: reserveId: ${this.reserve.id} recordedId: ${this.recordedId}`,
+                    `[FILE_HANDLE] stream.finished error: reserveId: ${this.reserve.id} recordedId: ${this.recordedId}`,
                 );
                 await this.recFailed(err);
             } else {
+                this.log.system.info(
+                    `[FILE_HANDLE] stream.finished normally, calling recEnd: reserveId: ${this.reserve.id} recordedId: ${this.recordedId}`,
+                );
                 await this.recEnd().catch(e => {
                     this.log.system.fatal(
                         `unexpected recEnd error: reserveId: ${this.reserve.id} recordedId: ${this.recordedId}`,
@@ -477,12 +545,18 @@ class RecorderModel implements IRecorderModel {
      * @param err: Error
      */
     private async recFailed(err: Error): Promise<void> {
+        this.log.system.info(
+            `[FILE_HANDLE] recFailed called: reserveId: ${this.reserve.id} recordedId: ${this.recordedId}`,
+        );
         this.destroyStream();
         this.log.system.error(`recording end error reserveId: ${this.reserve.id} recordedId: ${this.recordedId}`);
         this.log.system.error(err);
 
         // 録画終了処理
         this.isNeedDeleteReservation = false;
+        this.log.system.info(
+            `[FILE_HANDLE] recFailed calling recEnd: reserveId: ${this.reserve.id} recordedId: ${this.recordedId}`,
+        );
         await this.recEnd().catch(e => {
             this.log.system.error(`recEnd error reserveId: ${this.reserve.id} recordedId: ${this.recordedId}`);
             this.log.system.error(e);
@@ -499,6 +573,9 @@ class RecorderModel implements IRecorderModel {
             }
         }
         this.recordingEvent.emitRecordingFailed(this.reserve, recorded);
+        this.log.system.info(
+            `[FILE_HANDLE] recFailed completed: reserveId: ${this.reserve.id} recordedId: ${this.recordedId}`,
+        );
     }
 
     /**
@@ -588,10 +665,16 @@ class RecorderModel implements IRecorderModel {
      * 録画終了処理
      */
     private async recEnd(): Promise<void> {
-        this.log.system.info(`start recEnd reserveId: ${this.reserve.id} recordedId: ${this.recordedId}`);
+        this.log.system.info(`[FILE_HANDLE] start recEnd reserveId: ${this.reserve.id} recordedId: ${this.recordedId}`);
 
         // stream 停止
+        this.log.system.info(
+            `[FILE_HANDLE] recEnd calling destroyStream: reserveId: ${this.reserve.id} recordedId: ${this.recordedId}`,
+        );
         this.destroyStream();
+        this.log.system.info(
+            `[FILE_HANDLE] recEnd destroyStream completed: reserveId: ${this.reserve.id} recordedId: ${this.recordedId}`,
+        );
 
         // 削除予定か?
         if (this.isPlanToDelete === true) {
@@ -604,6 +687,9 @@ class RecorderModel implements IRecorderModel {
                 });
             }
 
+            this.log.system.info(
+                `[FILE_HANDLE] recEnd completed (plan to delete): reserveId: ${this.reserve.id} recordedId: ${this.recordedId}`,
+            );
             return;
         }
 
@@ -675,7 +761,10 @@ class RecorderModel implements IRecorderModel {
         }
 
         this.log.system.info(
-            `recording finish reserveId: ${this.reserve.id}, recordedId: ${this.recordedId}, videoFileFulPath: ${this.videoFileFulPath}`,
+            `[FILE_HANDLE] recording finish reserveId: ${this.reserve.id}, recordedId: ${this.recordedId}, videoFileFulPath: ${this.videoFileFulPath}`,
+        );
+        this.log.system.info(
+            `[FILE_HANDLE] recEnd completed successfully: reserveId: ${this.reserve.id} recordedId: ${this.recordedId}`,
         );
     }
 
@@ -763,11 +852,13 @@ class RecorderModel implements IRecorderModel {
             });
         } else if (this.isRecording === true) {
             this.isPlanToDelete = isPlanToDelete;
-            this.log.system.info(`stop recording: ${this.reserve.id}`);
+            this.log.system.info(`[FILE_HANDLE] stop recording: ${this.reserve.id}, isPlanToDelete: ${isPlanToDelete}`);
             // 録画中
             if (this.stream !== null) {
+                this.log.system.info(`[FILE_HANDLE] cancel: destroying stream for reserveId: ${this.reserve.id}`);
                 this.stream.destroy();
                 this.stream.push(null); // eof 通知
+                this.log.system.info(`[FILE_HANDLE] cancel: stream destroyed for reserveId: ${this.reserve.id}`);
             }
             this.isNeedDeleteReservation = false;
         }
