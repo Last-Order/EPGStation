@@ -61,6 +61,12 @@
                                 <div class="d-flex flex-wrap">
                                     <RecordedDetailEncodeButton :recordedItem="recorded.recordedItem" :videoFiles="recorded.display.videoFiles"></RecordedDetailEncodeButton>
                                     <RecordedDetailStopEncodeButton :recordedItem="recorded.recordedItem" v-on:stopEncode="stopEncode"></RecordedDetailStopEncodeButton>
+                                    <RecordedDetailDownloadButton
+                                        v-if="typeof recorded.display.videoFiles !== 'undefined'"
+                                        :videoFiles="recorded.display.videoFiles"
+                                        v-on:download="downloadVideo"
+                                        v-on:downloadPlayList="downloadPlayList"
+                                    ></RecordedDetailDownloadButton>
                                 </div>
                                 <RecordedDetailKodiButton :recordedItem="recorded.recordedItem" :videoFiles="recorded.display.videoFiles"></RecordedDetailKodiButton>
                             </div>
@@ -84,6 +90,7 @@
 
 <script lang="ts">
 import DropLogDialog from '@/components/dropLog/DropLogDialog.vue';
+import RecordedDetailDownloadButton from '@/components/recorded/detail/RecordedDetailDownloadButton.vue';
 import RecordedDetailEncodeButton from '@/components/recorded/detail/RecordedDetailEncodeButton.vue';
 import RecordedDetailKodiButton from '@/components/recorded/detail/RecordedDetailKodiButton.vue';
 import RecordedDetailMoreButton from '@/components/recorded/detail/RecordedDetailMoreButton.vue';
@@ -110,6 +117,7 @@ Component.registerHooks(['beforeRouteUpdate', 'beforeRouteLeave']);
     components: {
         TitleBar,
         RecordedDetailPlayButton,
+        RecordedDetailDownloadButton,
         RecordedDetailEncodeButton,
         RecordedDetailStopEncodeButton,
         RecordedDetailMoreButton,
