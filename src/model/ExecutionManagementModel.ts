@@ -45,6 +45,15 @@ class ExecutionManagementModel implements IExecutionManagementModel {
                 this.log.system.error(`queue: `, this.exeQueue);
                 // listener から削除
                 this.exeEventEmitter.removeListener(ExecutionManagementModel.UNLOCK_EVENT, onDone);
+                // タイムアウトした要求を queue から除去
+                const idx = this.exeQueue.findIndex(q => q.id === exeQueueData.id);
+                if (idx !== -1) {
+                    this.exeQueue.splice(idx, 1);
+                }
+                // もしこの要求がすでにロックを保持していた場合は開放して次へ進める
+                if (this.lockId === exeQueueData.id) {
+                    this.unLockExecution(exeQueueData.id);
+                }
 
                 reject(new Error('GetExecutionTimeoutError'));
             }, timeout);
