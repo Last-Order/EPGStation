@@ -49,7 +49,6 @@ export default class RecordedDetailDownloadButton extends Vue {
 </script>
 
 <style lang="sass" scoped>
-.mr-2 {
-    margin-right: 8px !important;
-}
+.mr-2
+    margin-right: 8px !important
 </style>
