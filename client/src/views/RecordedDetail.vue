@@ -63,6 +63,7 @@
                                     <RecordedDetailStopEncodeButton :recordedItem="recorded.recordedItem" v-on:stopEncode="stopEncode"></RecordedDetailStopEncodeButton>
                                     <RecordedDetailDownloadButton
                                         v-if="typeof recorded.display.videoFiles !== 'undefined'"
+                                        :recordedItem="recorded.recordedItem"
                                         :videoFiles="recorded.display.videoFiles"
                                         v-on:download="downloadVideo"
                                         v-on:downloadPlayList="downloadPlayList"

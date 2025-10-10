@@ -1,6 +1,6 @@
 <template>
-    <div class="mr-2">
-        <v-btn v-on:click="openDialog" title="download">
+    <div>
+        <v-btn color="teal white--text" v-on:click="openDialog" class="ma-1">
             <v-icon>mdi-download</v-icon>
         </v-btn>
         <RecordedDownloadDialog
@@ -47,8 +47,3 @@ export default class RecordedDetailDownloadButton extends Vue {
     }
 }
 </script>
-
-<style lang="sass" scoped>
-.mr-2
-    margin-right: 8px !important
-</style>
