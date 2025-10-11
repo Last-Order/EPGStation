@@ -308,6 +308,10 @@ class RecordingUtilModel implements IRecordingUtilModel {
         } else {
             // Recorded
             id = src.reserveId?.toString(10) || 'NULL';
+
+            if (id === 'NULL') {
+                this.log.system.warn(`recorded.reserveId is null: ${JSON.stringify(src)}`);
+            }
         }
 
         // 局名
