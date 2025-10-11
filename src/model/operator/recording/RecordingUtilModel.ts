@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import { inject, injectable } from 'inversify';
 import * as path from 'path';
+import * as Sentry from '@sentry/node';
 import * as apid from '../../../../api';
 import Reserve from '../../../db/entities/Reserve';
 import Recorded from '../../../db/entities/Recorded';
@@ -310,6 +311,13 @@ class RecordingUtilModel implements IRecordingUtilModel {
             id = src.reserveId?.toString(10) || 'NULL';
 
             if (id === 'NULL') {
+                Sentry.captureException(new Error(`recorded.reserveId is null`), {
+                    extra: {
+                        recordedId: src.id,
+                        recordedName: src.name,
+                        fullReserve: JSON.stringify(src),
+                    },
+                });
                 this.log.system.warn(`recorded.reserveId is null: ${JSON.stringify(src)}`);
             }
         }

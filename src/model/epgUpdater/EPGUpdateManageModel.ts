@@ -4,6 +4,7 @@ import { EventEmitter } from 'events';
 import { IncomingMessage } from 'http';
 import { inject, injectable } from 'inversify';
 import mirakurun from 'mirakurun';
+import * as Sentry from '@sentry/node';
 import * as mapid from '../../../node_modules/mirakurun/api';
 import IChannelDB from '../db/IChannelDB';
 import IChannelTypeIndex from '../db/IChannelTypeHash';
@@ -512,6 +513,7 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
                     const __epgUpdateTimer = setTimeout(() => {
                         if (__epgUpdateFinished === false) {
                             __epgUpdateWarned = true;
+                            Sentry.captureException(new Error('EPG update is taking longer than 5000 ms'));
                             this.log.system.warn('update program db is taking longer than 5000 ms');
                         }
                     }, 5000);
