@@ -1,7 +1,9 @@
 import * as child_process from 'child_process';
 import * as path from 'path';
 import 'reflect-metadata';
+import 'dotenv/config';
 import { install } from 'source-map-support';
+import * as Sentry from '@sentry/node';
 import IEPGUpdateExecutorManageModel from './model/epgUpdater/IEPGUpdateExecutorManageModel';
 import IEventSetter from './model/event/IEventSetter';
 import IConfiguration from './model/IConfiguration';
@@ -14,6 +16,17 @@ import * as containerSetter from './model/ModelContainerSetter';
 import IRecordingManageModel from './model/operator/recording/IRecordingManageModel';
 import IReservationManageModel from './model/operator/reservation/IReservationManageModel';
 import IStorageManageModel from './model/operator/storage/IStorageManageModel';
+
+Sentry.init({
+    dsn: process.env.SENTRY_DSN || '',
+
+    // Send structured logs to Sentry
+    enableLogs: true,
+    // Setting this option to true will send default PII data to Sentry.
+    // For example, automatic IP address collection on events
+    sendDefaultPii: false,
+});
+
 install();
 
 containerSetter.set(container);
