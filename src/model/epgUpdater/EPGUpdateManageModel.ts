@@ -506,12 +506,32 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
                         updateValues: updateValues.length,
                     });
 
-                    await this.programDB.update(this.channelIndex, {
-                        insert: insertValues,
-                        update: updateValues,
-                        delete: deleteValues,
-                    });
+                    const __epgUpdateStart = Date.now();
+                    let __epgUpdateFinished = false;
+                    let __epgUpdateWarned = false;
+                    const __epgUpdateTimer = setTimeout(() => {
+                        if (__epgUpdateFinished === false) {
+                            __epgUpdateWarned = true;
+                            this.log.system.warn('update program db is taking longer than 5000 ms');
+                        }
+                    }, 5000);
+
+                    try {
+                        await this.programDB.update(this.channelIndex, {
+                            insert: insertValues,
+                            update: updateValues,
+                            delete: deleteValues,
+                        });
+                    } finally {
+                        __epgUpdateFinished = true;
+                        clearTimeout(__epgUpdateTimer);
+                    }
+
                     this.log.system.info('update program db done');
+                    const __epgUpdateElapsed = Date.now() - __epgUpdateStart;
+                    if (__epgUpdateWarned === false && __epgUpdateElapsed > 5000) {
+                        this.log.system.warn(`update program db took ${__epgUpdateElapsed} ms (> 5000 ms)`);
+                    }
 
                     this.emit(EPGUpdateEvent.PROGRAM_UPDATED);
                 }
