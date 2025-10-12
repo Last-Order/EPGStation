@@ -22,7 +22,7 @@ switch (config.dbtype) {
             type: 'sqlite',
             database: path.join(__dirname, 'data', 'database.db'),
             synchronize: false,
-            logging: false,
+            logging: true,
             entities: [entitie],
             subscribers: [subscriber],
             migrationsRun: false,

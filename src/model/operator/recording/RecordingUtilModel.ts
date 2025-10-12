@@ -314,6 +314,7 @@ class RecordingUtilModel implements IRecordingUtilModel {
                 Sentry.captureException(new Error(`recorded.reserveId is null`), {
                     extra: {
                         recordedId: src.id,
+                        reserveId: src.reserveId,
                         recordedName: src.name,
                         fullReserve: JSON.stringify(src),
                     },
