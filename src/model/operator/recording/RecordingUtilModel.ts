@@ -295,7 +295,8 @@ class RecordingUtilModel implements IRecordingUtilModel {
         let programName: string = src.name;
         let channelType: string = 'NULL';
         let channel: string = 'NULL';
-        if (src instanceof Reserve) {
+        // Reserve オブジェクトは 'reserveId' プロパティを持たないため、'reserveId' が存在しない場合は Reserve と判定する
+        if (!('reserveId' in src)) {
             // Reserve
             id = src.id.toString(10);
             channelType = src.channelType;
