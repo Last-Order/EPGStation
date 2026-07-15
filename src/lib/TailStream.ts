@@ -23,13 +23,18 @@ export interface TailStreamOption extends ReadableOptions {
 class TailStream extends Readable {
     private offset: number;
     private isClosed: boolean = false;
+    private isFdClosed: boolean = false;
+    private isFdCloseInProgress: boolean = false;
     private filePath: string;
     private readInProgress: boolean = false;
     private getFdInProgress: boolean = false;
+    private getFdRetryTimer: NodeJS.Timeout | null = null;
     private checkIdleTimer: NodeJS.Timeout | null = null;
     private checkFileTimer: NodeJS.Timeout | null = null;
     private readPending: number = 0;
-    private fd: number = 0;
+    private fd: number | null = null;
+    private fdCloseError: NodeJS.ErrnoException | null = null;
+    private fdCloseCallbacks: Array<(err: NodeJS.ErrnoException | null) => void> = [];
 
     private log: ILogger;
 
@@ -45,22 +50,25 @@ class TailStream extends Readable {
     }
 
     private getFd(): void {
-        assert.ok(!this.fd);
+        assert.strictEqual(this.fd, null);
         assert.ok(!this.getFdInProgress);
         this.getFdInProgress = true;
 
         fs.open(this.filePath, 'r', (err, fd) => {
-            if (this.isClosed) {
-                return;
-            }
             assert.ok(this.getFdInProgress);
             this.getFdInProgress = false;
             if (err) {
+                if (this.isClosed) {
+                    this.tryCloseFd();
+                    return;
+                }
+
                 // file doesn't exist (yet), try later
                 if (this.readPending) {
                     // and we're inside of a _read call already, start a watcher to be notified
                     // when it exists
-                    setTimeout(() => {
+                    this.getFdRetryTimer = setTimeout(() => {
+                        this.getFdRetryTimer = null;
                         if (this.isClosed) {
                             return;
                         }
@@ -69,6 +77,12 @@ class TailStream extends Readable {
                 }
             } else {
                 this.fd = fd;
+
+                if (this.isClosed) {
+                    this.tryCloseFd();
+                    return;
+                }
+
                 if (this.readPending) {
                     this.doRead();
                 }
@@ -77,13 +91,16 @@ class TailStream extends Readable {
     }
 
     private doRead(): void {
-        assert.ok(this.fd);
+        assert.notStrictEqual(this.fd, null);
         assert.ok(this.readPending);
         assert.ok(!this.readInProgress);
 
+        const fd = this.fd as number;
         this.readInProgress = true;
-        fs.fstat(this.fd, (err, stat) => {
+        fs.fstat(fd, (err, stat) => {
             if (this.isClosed) {
+                this.readInProgress = false;
+                this.tryCloseFd();
                 return;
             }
             assert.ok(this.readInProgress);
@@ -92,7 +109,7 @@ class TailStream extends Readable {
                 this.readInProgress = false;
                 // TODO: retry later, need to verify .fd is valid, check if .ino changed
                 this.debug('error statting', err);
-                this.emit('error', err);
+                this.destroy(err);
 
                 return;
             }
@@ -118,17 +135,19 @@ class TailStream extends Readable {
 
             const buffer = new Buffer(size);
 
-            fs.read(this.fd, buffer, 0, size, start, (e, bytesRead, buff) => {
-                if (this.isClosed) {
-                    return;
-                }
+            fs.read(fd, buffer, 0, size, start, (e, bytesRead, buff) => {
                 assert.ok(this.readInProgress);
                 this.readInProgress = false;
+                if (this.isClosed) {
+                    this.tryCloseFd();
+                    return;
+                }
                 if (e) {
                     // Error, stop reading
                     this.debug('error reading', e);
 
-                    return this.emit('error', e);
+                    this.destroy(e);
+                    return;
                 }
 
                 if (bytesRead === 0) {
@@ -159,15 +178,33 @@ class TailStream extends Readable {
     }
 
     private checkFile(): void {
-        if (this.checkFileTimer !== null) {
+        if (this.isClosed || this.checkFileTimer !== null) {
             return;
         }
 
-        const stat = fs.statSync(this.filePath);
+        let stat: fs.Stats;
+        try {
+            stat = fs.statSync(this.filePath);
+        } catch (err: any) {
+            this.destroy(err);
+            return;
+        }
+
         this.checkFileTimer = setTimeout(() => {
             this.checkFileTimer = null;
 
-            const newStat = fs.statSync(this.filePath);
+            if (this.isClosed) {
+                return;
+            }
+
+            let newStat: fs.Stats;
+            try {
+                newStat = fs.statSync(this.filePath);
+            } catch (err: any) {
+                this.destroy(err);
+                return;
+            }
+
             if (newStat.size !== stat.size) {
                 this.doRead();
             } else {
@@ -177,6 +214,10 @@ class TailStream extends Readable {
     }
 
     private checkIdle(): void {
+        if (this.isClosed) {
+            return;
+        }
+
         assert.ok(this.checkIdleTimer);
         this.checkIdleTimer = null;
         assert.ok(!this.readInProgress && !this.getFdInProgress);
@@ -186,7 +227,10 @@ class TailStream extends Readable {
     }
 
     public _read(size: number): void {
-        assert.ok(!this.isClosed);
+        if (this.isClosed) {
+            return;
+        }
+
         assert.ok(!this.readPending);
         assert.ok(size);
 
@@ -197,7 +241,7 @@ class TailStream extends Readable {
 
         this.debug('read_pending = ' + size);
         this.readPending = size;
-        if (!this.fd) {
+        if (this.fd === null) {
             if (this.getFdInProgress) {
                 this.debug('waiting on fd');
                 // Read will trigger read when getFd finishes
@@ -211,9 +255,98 @@ class TailStream extends Readable {
         this.doRead();
     }
 
+    public _destroy(error: Error | null, callback: (error?: Error | null) => void): void {
+        this.beginClose(closeError => {
+            if (error !== null && closeError !== null) {
+                this.debug('error closing file', closeError);
+            }
+            callback(error === null ? closeError : error);
+        });
+    }
+
     private close(): void {
-        this.isClosed = true;
+        if (this.isClosed) {
+            return;
+        }
+
+        this.beginClose(err => {
+            if (err !== null && !this.destroyed) {
+                this.destroy(err);
+            }
+        });
         this.push(null);
+    }
+
+    private beginClose(callback: (err: NodeJS.ErrnoException | null) => void): void {
+        if (this.isFdClosed) {
+            callback(this.fdCloseError);
+            return;
+        }
+
+        this.fdCloseCallbacks.push(callback);
+
+        if (!this.isClosed) {
+            this.isClosed = true;
+            this.readPending = 0;
+            this.clearTimers();
+        }
+
+        this.tryCloseFd();
+    }
+
+    private tryCloseFd(): void {
+        if (
+            !this.isClosed ||
+            this.isFdClosed ||
+            this.isFdCloseInProgress ||
+            this.getFdInProgress ||
+            this.readInProgress
+        ) {
+            return;
+        }
+
+        if (this.fd === null) {
+            this.finishFdClose(null);
+            return;
+        }
+
+        const fd = this.fd;
+        this.fd = null;
+        this.isFdCloseInProgress = true;
+        fs.close(fd, err => {
+            this.isFdCloseInProgress = false;
+            this.finishFdClose(err);
+        });
+    }
+
+    private finishFdClose(err: NodeJS.ErrnoException | null): void {
+        if (this.isFdClosed) {
+            return;
+        }
+
+        this.isFdClosed = true;
+        this.fdCloseError = err;
+
+        const callbacks = this.fdCloseCallbacks;
+        this.fdCloseCallbacks = [];
+        for (const callback of callbacks) {
+            callback(err);
+        }
+    }
+
+    private clearTimers(): void {
+        if (this.getFdRetryTimer !== null) {
+            clearTimeout(this.getFdRetryTimer);
+            this.getFdRetryTimer = null;
+        }
+        if (this.checkIdleTimer !== null) {
+            clearTimeout(this.checkIdleTimer);
+            this.checkIdleTimer = null;
+        }
+        if (this.checkFileTimer !== null) {
+            clearTimeout(this.checkFileTimer);
+            this.checkFileTimer = null;
+        }
     }
 
     private debug(str: string, err?: Error): void {
