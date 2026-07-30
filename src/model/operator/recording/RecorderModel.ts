@@ -249,10 +249,10 @@ class RecorderModel implements IRecorderModel {
             );
             this.log.system.error(err);
             if (retry < RecorderModel.STREAM_REQUEST_RETRY_LIMIT) {
-                // retry immediately
-                setImmediate(() => {
+                // retry after tuner release grace period
+                setTimeout(() => {
                     this.prepRecord(retry + 1);
-                });
+                }, RecorderModel.STREAM_REQUEST_RETRY_INTERVAL);
             } else {
                 this.isPrepRecording = false;
                 // 録画準備失敗を通知
@@ -1085,6 +1085,7 @@ namespace RecorderModel {
     export const EVENT_RELAY_CHECK_TIME = 20 * 1000; // イベントリレーの確認時間 20秒
     export const STREAM_REQUEST_TIMEOUT = 10 * 1000;
     export const STREAM_REQUEST_RETRY_LIMIT = 3;
+    export const STREAM_REQUEST_RETRY_INTERVAL = 3500;
 }
 
 export default RecorderModel;
