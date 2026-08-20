@@ -140,12 +140,13 @@ export default class IPCClient implements IIPCClient {
                     func: ReserveationFunctions.getBroadcastStatus,
                 });
             },
-            add: (option: apid.ManualReserveOption) => {
+            add: (option: apid.ManualReserveOption, reservationUser: apid.ReservationUser | null) => {
                 return this.send<apid.ReserveId>({
                     model: ModelName.reserveation,
                     func: ReserveationFunctions.add,
                     args: {
                         option: option,
+                        reservationUser: reservationUser,
                     },
                 });
             },

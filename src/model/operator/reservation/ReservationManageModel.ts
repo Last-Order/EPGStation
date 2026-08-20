@@ -94,8 +94,13 @@ class ReservationManageModel implements IReservationManageModel {
 
     /**
      * 手動予約追加
+     * @param option: 手動予約オプション
+     * @param reservationUser: 予約ユーザー
      */
-    public async add(option: apid.ManualReserveOption): Promise<apid.ReserveId> {
+    public async add(
+        option: apid.ManualReserveOption,
+        reservationUser: apid.ReservationUser | null,
+    ): Promise<apid.ReserveId> {
         this.log.system.info(
             'add reservation' + (typeof option.programId !== 'undefined' ? `: ${option.programId}` : ''),
         );
@@ -125,6 +130,7 @@ class ReservationManageModel implements IReservationManageModel {
             finalize();
             throw err;
         }
+        newReserve.reservationUser = reservationUser === null ? null : JSON.stringify(reservationUser);
 
         // 追加する予約情報が競合するかチェック
         await this.checkSingleReserveConflict(newReserve).catch(err => {
@@ -386,6 +392,7 @@ class ReservationManageModel implements IReservationManageModel {
 
         // リレー元の予約情報から必要な情報をセットする
         newReserve.ruleId = parentReserve.ruleId;
+        newReserve.reservationUser = parentReserve.reservationUser;
         newReserve.allowEndLack = parentReserve.allowEndLack;
         newReserve.tags = parentReserve.tags;
         newReserve.parentDirectoryName = parentReserve.parentDirectoryName;

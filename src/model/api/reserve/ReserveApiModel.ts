@@ -18,10 +18,14 @@ export default class ReserveApiModel implements IReserveApiModel {
     /**
      * 手動予約の追加
      * @param option: ManualReserveOption
+     * @param reservationUser: 予約ユーザー
      * @return ReserveId
      */
-    public add(option: apid.ManualReserveOption): Promise<apid.ReserveId> {
-        return this.ipc.reserveation.add(option);
+    public add(
+        option: apid.ManualReserveOption,
+        reservationUser: apid.ReservationUser | null,
+    ): Promise<apid.ReserveId> {
+        return this.ipc.reserveation.add(option, reservationUser);
     }
 
     /**
