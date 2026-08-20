@@ -19,8 +19,8 @@ import IConfiguration from '../IConfiguration';
 import ILogger from '../ILogger';
 import ILoggerModel from '../ILoggerModel';
 import IServiceServer from './IServiceServer';
-import { createCloudflareAccessMiddleware } from './middleware/CloudflareAccessMiddleware';
 import ISocketIOManageModel from './socketio/ISocketIOManageModel';
+import { createCloudflareAccessMiddleware } from './middleware/CloudflareAccessMiddleware';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const swaggerdist = require('swagger-ui-dist');
