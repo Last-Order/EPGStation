@@ -38,6 +38,9 @@
                                 {{ recorded.display.time }} ({{ recorded.display.duration }}
                                 m)
                             </div>
+                            <div v-if="typeof recorded.recordedItem.reservationUser !== 'undefined'" class="subtitle-2 font-weight-light">
+                                予約ユーザー: {{ recorded.recordedItem.reservationUser.email }}
+                            </div>
                             <div class="body-2 mt-2 font-weight-light drop" v-bind:class="{ droped: recorded.display.hasDrop === true }" v-on:click="showDropLog">
                                 {{ recorded.display.drop }}
                             </div>
