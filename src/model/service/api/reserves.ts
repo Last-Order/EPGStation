@@ -79,8 +79,10 @@ export const post: Operation = async (req, res) => {
     const reserveApiModel = container.get<IReserveApiModel>('IReserveApiModel');
 
     try {
+        const email = req.cloudflareAccessUser?.email ?? null;
+        const reservationUser: apid.ReservationUser | null = email === null ? null : { email };
         api.responseJSON(res, 201, {
-            reserveId: await reserveApiModel.add(req.body),
+            reserveId: await reserveApiModel.add(req.body, reservationUser),
         });
     } catch (err: any) {
         api.responseServerError(res, err.message);

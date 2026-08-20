@@ -22,6 +22,12 @@ export default class Reserve extends BaseEntity {
     public ruleId: number | null = null; // ruleId null なら手動予約
 
     @Column({
+        type: 'text',
+        nullable: true,
+    })
+    public reservationUser: string | null = null; // ReservationUser を JSON.stringify したもの
+
+    @Column({
         type: 'integer',
         nullable: true,
     })

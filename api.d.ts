@@ -348,6 +348,13 @@ export interface Records {
 }
 
 /**
+ * 予約ユーザー
+ */
+export interface ReservationUser {
+    email: string;
+}
+
+/**
  * Recorded
  */
 export interface RecordedItem {
@@ -373,6 +380,7 @@ export interface RecordedItem {
     videoComponentType?: number;
     audioSamplingRate?: ProgramAudioSamplingRate;
     audioComponentType?: number;
+    reservationUser?: ReservationUser;
     isRecording: boolean;
     thumbnails?: ThumbnailId[];
     videoFiles?: VideoFile[];

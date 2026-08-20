@@ -1004,6 +1004,15 @@ components:
                     description: 録画総件数
                     type: integer
 
+        ReservationUser:
+            description: 予約ユーザー
+            type: object
+            required:
+                - email
+            properties:
+                email:
+                    type: string
+
         RecordedItem:
             description: 録画番組情報
             type: object
@@ -1064,6 +1073,8 @@ components:
                     $ref: '#/components/schemas/ProgramAudioSamplingRate'
                 audioComponentType:
                     type: integer
+                reservationUser:
+                    $ref: '#/components/schemas/ReservationUser'
                 isRecording:
                     description: 録画中か
                     type: boolean

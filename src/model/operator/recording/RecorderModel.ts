@@ -618,6 +618,7 @@ class RecorderModel implements IRecorderModel {
         recorded.isRecording = this.isRecording;
         recorded.reserveId = this.reserve.id;
         recorded.ruleId = this.reserve.ruleId;
+        recorded.reservationUser = this.reserve.reservationUser;
         recorded.programId = this.reserve.programId;
         recorded.channelId = this.reserve.channelId;
         recorded.startAt = this.reserve.startAt;

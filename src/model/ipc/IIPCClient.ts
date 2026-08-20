@@ -4,7 +4,7 @@ import { AddVideoFileOption, UploadedVideoFileOption } from '../operator/recorde
 
 export interface IPCReservationManageModel {
     getBroadcastStatus(): Promise<apid.BroadcastStatus>;
-    add(option: apid.ManualReserveOption): Promise<apid.ReserveId>;
+    add(option: apid.ManualReserveOption, reservationUser: apid.ReservationUser | null): Promise<apid.ReserveId>;
     update(reserveId: apid.ReserveId): Promise<void>;
     updateRule(ruleId: apid.RuleId): Promise<void>;
     updateAll(isUntilComplete: boolean): Promise<void>;

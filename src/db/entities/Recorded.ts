@@ -34,6 +34,12 @@ export default class Recorded extends BaseEntity {
     public ruleId?: number | null;
 
     @Column({
+        type: 'text',
+        nullable: true,
+    })
+    public reservationUser: string | null = null; // ReservationUser を JSON.stringify したもの
+
+    @Column({
         type: 'bigint',
         nullable: true,
     })

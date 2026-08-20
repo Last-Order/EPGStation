@@ -163,8 +163,9 @@ export default class IPCServer implements IIPCServer {
         // add
         index[ReserveationFunctions.add] = async msg => {
             const option = this.getArgsValue<apid.ManualReserveOption>(msg, 'option');
+            const reservationUser = this.getArgsValue<apid.ReservationUser | null>(msg, 'reservationUser');
 
-            return await this.reservationManage.add(option);
+            return await this.reservationManage.add(option, reservationUser);
         };
 
         // update

@@ -36,6 +36,10 @@ export default class RecordedItemUtil implements IRecordedItemUtil {
             item.programId = recorded.programId;
         }
 
+        if (recorded.reservationUser !== null) {
+            item.reservationUser = JSON.parse(recorded.reservationUser);
+        }
+
         if (recorded.description !== null) {
             if (isHalfWidth === true) {
                 if (typeof recorded.halfWidthDescription === 'string') {
