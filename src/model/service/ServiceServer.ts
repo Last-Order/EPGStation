@@ -19,6 +19,7 @@ import IConfiguration from '../IConfiguration';
 import ILogger from '../ILogger';
 import ILoggerModel from '../ILoggerModel';
 import IServiceServer from './IServiceServer';
+import { createCloudflareAccessMiddleware } from './middleware/CloudflareAccessMiddleware';
 import ISocketIOManageModel from './socketio/ISocketIOManageModel';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -53,6 +54,7 @@ class ServiceServer implements IServiceServer {
         if (this.config.isAllowAllCORS === true) {
             this.app.use(cors());
         }
+        this.setCloudflareAccess();
         this.setSwaggerUI();
         this.createUploadDir();
         this.initOpenApi(api);
@@ -65,6 +67,17 @@ class ServiceServer implements IServiceServer {
      */
     private setLog(): void {
         this.app.use(log4js.connectLogger(this.log.access, { level: 'info' }));
+    }
+
+    /**
+     * Cloudflare Access user parsing
+     */
+    private setCloudflareAccess(): void {
+        const middleware = createCloudflareAccessMiddleware(message => this.log.system.warn(message));
+        if (middleware !== null) {
+            this.app.use(middleware);
+            this.log.system.info('Cloudflare Access user parsing enabled.');
+        }
     }
 
     /**
