@@ -97,6 +97,7 @@ export interface ReserveItem {
      */
     id: ReserveId;
     ruleId?: RuleId;
+    reservationUser?: ReservationUser;
     isSkip: boolean;
     isConflict: boolean;
     isOverlap: boolean;
