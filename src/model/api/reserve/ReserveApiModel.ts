@@ -90,6 +90,9 @@ export default class ReserveApiModel implements IReserveApiModel {
         if (reserve.ruleId !== null) {
             item.ruleId = reserve.ruleId;
         }
+        if (reserve.reservationUser !== null) {
+            item.reservationUser = JSON.parse(reserve.reservationUser);
+        }
         if (reserve.tags !== null) {
             item.tags = JSON.parse(reserve.tags);
         }

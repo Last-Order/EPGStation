@@ -8,6 +8,7 @@
                     <div class="sub-text" style="cursor: pointer" v-on:click="gotoGuide">
                         {{ reserve.display.day }}({{ reserve.display.dow }}) {{ reserve.display.startTime }} ~ {{ reserve.display.endTime }} ({{ reserve.display.duration }}m)
                     </div>
+                    <div v-if="typeof reserve.reserveItem.reservationUser !== 'undefined'" class="sub-text">予約ユーザー: {{ reserve.reserveItem.reservationUser.email }}</div>
                     <div class="genres sub-text my-1">
                         <div v-for="genre in reserve.display.genres" v-bind:key="genre">{{ genre }}</div>
                     </div>
